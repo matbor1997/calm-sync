@@ -37,18 +37,21 @@
 
     --radius: 1rem;
 
-    /* Game-specific tokens */
-    --node-base: 180 45% 55%;
-    --node-glow: 45 90% 65%;
-    --node-locked: 200 30% 85%;
-    --bg-gradient-start: 220 60% 8%;
-    --bg-gradient-mid: 250 45% 12%;
-    --bg-gradient-end: 280 40% 10%;
+    /* Breathing system tokens */
+    --node-anchor: 200 25% 80%;
+    --node-settled: 195 28% 70%;
+    --node-syncing: 190 32% 60%;
+    --node-listening: 185 35% 50%;
+    --node-untuned: 180 40% 40%;
+    
+    --bg-gradient-start: 220 55% 8%;
+    --bg-gradient-mid: 245 42% 12%;
+    --bg-gradient-end: 270 35% 10%;
     
     /* Animation tokens */
-    --breath-duration: 8s;
-    --pulse-duration: 0.8s;
-    --lock-duration: 500ms;
+    --breath-duration: 10s;
+    --transition-slow: 2s;
+    --transition-gentle: 0.5s;
   }
 
   .dark {
@@ -77,7 +80,7 @@
 }
 
 @layer utilities {
-  .game-background {
+  .breathing-background {
     background: linear-gradient(
       180deg,
       hsl(var(--bg-gradient-start)) 0%,
@@ -86,95 +89,48 @@
     );
   }
 
-  .breathing-bg {
-    animation: breathe var(--breath-duration) ease-in-out infinite;
+  .slow-breathe {
+    animation: slowBreathe var(--breath-duration) ease-in-out infinite;
   }
 
-  .node-pulse {
-    animation: nodePulse var(--pulse-duration) ease-in-out infinite;
+  .gentle-fade-in {
+    animation: gentleFadeIn var(--transition-slow) ease-out forwards;
   }
 
-  .node-glow-active {
-    filter: drop-shadow(0 0 20px hsl(var(--node-glow) / 0.8))
-            drop-shadow(0 0 40px hsl(var(--node-glow) / 0.4));
-  }
-
-  .node-glow-idle {
-    filter: drop-shadow(0 0 8px hsl(var(--node-base) / 0.3));
-  }
-
-  .node-locked-glow {
-    filter: drop-shadow(0 0 15px hsl(var(--node-locked) / 0.5))
-            drop-shadow(0 0 30px hsl(var(--node-locked) / 0.2));
-  }
-
-  .lock-ripple {
-    animation: lockRipple var(--lock-duration) ease-out forwards;
-  }
-
-  .completion-glow {
-    animation: completionGlow 2s ease-in-out forwards;
-  }
-
-  .fade-in-hint {
-    animation: fadeInHint 3s ease-in-out forwards;
+  .gentle-fade-out {
+    animation: gentleFadeOut var(--transition-slow) ease-out forwards;
   }
 }
 
-@keyframes breathe {
+@keyframes slowBreathe {
   0%, 100% {
     opacity: 1;
     transform: scale(1);
   }
   50% {
-    opacity: 0.92;
-    transform: scale(1.02);
+    opacity: 0.95;
+    transform: scale(1.012);
   }
 }
 
-@keyframes nodePulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
-}
-
-@keyframes lockRipple {
+@keyframes gentleFadeIn {
   0% {
-    transform: scale(1);
-    opacity: 0.6;
+    opacity: 0;
+    transform: translateY(8px);
   }
   100% {
-    transform: scale(2.5);
-    opacity: 0;
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-@keyframes completionGlow {
+@keyframes gentleFadeOut {
   0% {
-    opacity: 0;
-  }
-  50% {
-    opacity: 0.3;
+    opacity: 1;
+    transform: translateY(0);
   }
   100% {
     opacity: 0;
-  }
-}
-
-@keyframes fadeInHint {
-  0% {
-    opacity: 0;
-  }
-  20% {
-    opacity: 0.6;
-  }
-  80% {
-    opacity: 0.6;
-  }
-  100% {
-    opacity: 0;
+    transform: translateY(-8px);
   }
 }

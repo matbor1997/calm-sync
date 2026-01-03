@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
-import { GameNode as GameNodeType, GAME_CONFIG, isNodeActive } from './types';
+import { BreathingNode, CONFIG } from './types';
 
 interface GameNodeProps {
-  node: GameNodeType;
+  node: BreathingNode;
   screenWidth: number;
   screenHeight: number;
   onTap: (id: number) => void;
@@ -14,61 +14,84 @@ export const GameNodeComponent: React.FC<GameNodeProps> = ({
   screenHeight,
   onTap,
 }) => {
-  // Calculate pixel position and size
+  // Calculate pixel position
   const pixelX = node.x * screenWidth;
   const pixelY = node.y * screenHeight;
   
-  // Responsive radius with min/max bounds
+  // Responsive radius
   const baseRadius = Math.min(
-    Math.max(screenWidth * GAME_CONFIG.NODE_RADIUS_BASE, GAME_CONFIG.NODE_RADIUS_MIN),
-    GAME_CONFIG.NODE_RADIUS_MAX
+    Math.max(screenWidth * CONFIG.NODE_RADIUS_BASE, CONFIG.NODE_RADIUS_MIN),
+    CONFIG.NODE_RADIUS_MAX
   );
   
-  // Calculate visual states
-  const isActive = !node.locked && isNodeActive(node);
-  const pulseScale = node.locked 
-    ? 1 
-    : 1 + Math.sin(node.phase * Math.PI * 2) * 0.08;
+  const radius = node.isAnchor ? baseRadius * CONFIG.ANCHOR_RADIUS_MULTIPLIER : baseRadius;
   
-  // Smooth lock animation
-  const lockEase = node.locked 
-    ? 1 - Math.pow(1 - node.lockAnimationProgress, 3) 
-    : 0;
+  // Breathing effect - sinusoidal brightness and scale
+  // Phase 0 = peak (inhale complete), 0.5 = trough (exhale complete)
+  const breathValue = Math.sin(node.phase * Math.PI * 2);
+  const breathScale = 1 + breathValue * 0.06;
   
-  // Colors - transition between states
+  // Brightness based on breath phase and tuning state
+  const baseBrightness = useMemo(() => {
+    if (node.isAnchor) return 0.85;
+    switch (node.tuningState) {
+      case 'settled': return 0.8;
+      case 'synchronizing': return 0.65;
+      case 'listening': return 0.55;
+      default: return 0.45;
+    }
+  }, [node.isAnchor, node.tuningState]);
+  
+  const breathBrightness = baseBrightness + breathValue * 0.15;
+  
+  // Visual noise (slight position jitter for untuned nodes)
+  const noiseX = node.visualNoise * Math.sin(node.phase * 7) * 3;
+  const noiseY = node.visualNoise * Math.cos(node.phase * 5) * 3;
+  
+  // Colors based on tuning state
   const nodeColor = useMemo(() => {
-    if (node.locked) {
-      return `hsl(200, ${30 + lockEase * 10}%, ${75 + lockEase * 10}%)`;
+    const lightness = Math.round(breathBrightness * 100);
+    if (node.isAnchor) {
+      return `hsl(200, 25%, ${lightness}%)`;
     }
-    if (isActive) {
-      // Golden glow when tappable
-      return `hsl(45, 90%, 65%)`;
+    switch (node.tuningState) {
+      case 'settled':
+        return `hsl(195, 28%, ${lightness}%)`;
+      case 'synchronizing':
+        return `hsl(190, 32%, ${lightness}%)`;
+      case 'listening':
+        return `hsl(185, 35%, ${lightness}%)`;
+      default:
+        return `hsl(180, 40%, ${lightness - 10}%)`;
     }
-    // Base teal color
-    return `hsl(180, 45%, 55%)`;
-  }, [node.locked, isActive, lockEase]);
+  }, [node.isAnchor, node.tuningState, breathBrightness]);
   
-  // Glow intensity
-  const glowIntensity = useMemo(() => {
-    if (node.locked) return 0.5;
-    if (isActive) return 1;
-    return 0.3;
-  }, [node.locked, isActive]);
+  // Glow opacity
+  const glowOpacity = useMemo(() => {
+    if (node.isAnchor) return 0.5 + breathValue * 0.2;
+    switch (node.tuningState) {
+      case 'settled': return 0.45 + breathValue * 0.15;
+      case 'synchronizing': return 0.3 + breathValue * 0.1;
+      case 'listening': return 0.2 + breathValue * 0.08;
+      default: return 0.1;
+    }
+  }, [node.isAnchor, node.tuningState, breathValue]);
   
-  // Touch target (larger than visual)
-  const touchRadius = baseRadius * GAME_CONFIG.TOUCH_TARGET_MULTIPLIER;
+  const touchRadius = radius * CONFIG.TOUCH_TARGET_MULTIPLIER;
   
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onTap(node.id);
+    if (!node.isAnchor && node.tuningState !== 'settled') {
+      onTap(node.id);
+    }
   };
   
   return (
     <g 
-      transform={`translate(${pixelX}, ${pixelY})`}
+      transform={`translate(${pixelX + noiseX}, ${pixelY + noiseY})`}
       onPointerDown={handlePointerDown}
-      style={{ cursor: node.locked ? 'default' : 'pointer' }}
+      style={{ cursor: node.isAnchor || node.tuningState === 'settled' ? 'default' : 'pointer' }}
     >
       {/* Invisible touch target */}
       <circle
@@ -77,83 +100,56 @@ export const GameNodeComponent: React.FC<GameNodeProps> = ({
         style={{ touchAction: 'none' }}
       />
       
-      {/* Outer glow */}
+      {/* Outer breathing glow */}
       <circle
-        r={baseRadius * pulseScale * 1.4}
-        fill={`url(#glow-gradient-${node.id})`}
-        opacity={glowIntensity * 0.6}
-        style={{
-          transition: node.locked ? 'opacity 0.5s ease-out' : 'opacity 0.15s ease-out',
-        }}
+        r={radius * breathScale * 1.6}
+        fill={`url(#breath-glow-${node.id})`}
+        opacity={glowOpacity}
       />
       
-      {/* Lock ripple effect */}
-      {node.rippleActive && (
+      {/* Tap ripple effect */}
+      {node.tapRippleProgress > 0 && node.tapRippleProgress < 1 && (
         <circle
-          r={baseRadius * (1 + node.rippleProgress * 1.5)}
+          r={radius * (1 + node.tapRippleProgress * 0.8)}
           fill="none"
-          stroke="hsl(200, 30%, 85%)"
+          stroke="hsl(200, 30%, 75%)"
           strokeWidth={2}
-          opacity={0.6 * (1 - node.rippleProgress)}
+          opacity={0.5 * (1 - node.tapRippleProgress)}
         />
       )}
       
       {/* Main node body */}
       <circle
-        r={baseRadius * pulseScale}
+        r={radius * breathScale}
         fill={nodeColor}
         style={{
-          transition: 'fill 0.2s ease-out',
-          filter: node.locked 
-            ? 'drop-shadow(0 0 15px hsla(200, 30%, 85%, 0.5))'
-            : isActive 
-              ? 'drop-shadow(0 0 20px hsla(45, 90%, 65%, 0.8))'
-              : 'drop-shadow(0 0 8px hsla(180, 45%, 55%, 0.3))',
+          transition: 'fill 0.3s ease-out',
         }}
       />
       
-      {/* Inner highlight */}
+      {/* Inner soft highlight */}
       <circle
-        r={baseRadius * pulseScale * 0.6}
-        fill={`url(#inner-highlight-${node.id})`}
-        opacity={0.4}
+        r={radius * breathScale * 0.55}
+        fill={`url(#inner-glow-${node.id})`}
+        opacity={0.4 + breathValue * 0.1}
       />
       
-      {/* Phase indicator ring (subtle) */}
-      {!node.locked && (
+      {/* Anchor indicator - steady inner dot */}
+      {node.isAnchor && (
         <circle
-          r={baseRadius * pulseScale * 0.85}
-          fill="none"
-          stroke="hsla(0, 0%, 100%, 0.2)"
-          strokeWidth={2}
-          strokeDasharray={`${node.phase * baseRadius * 5.3} ${baseRadius * 5.3}`}
-          transform="rotate(-90)"
-          style={{
-            transition: 'stroke-dasharray 0.05s linear',
-          }}
+          r={radius * 0.12}
+          fill="hsla(200, 20%, 95%, 0.7)"
         />
       )}
       
-      {/* Locked center dot */}
-      {node.locked && lockEase > 0.5 && (
-        <circle
-          r={baseRadius * 0.15 * lockEase}
-          fill="hsla(0, 0%, 100%, 0.8)"
-        />
-      )}
-      
-      {/* Gradient definitions for this node */}
+      {/* Gradient definitions */}
       <defs>
-        <radialGradient id={`glow-gradient-${node.id}`}>
-          <stop 
-            offset="0%" 
-            stopColor={isActive && !node.locked ? 'hsl(45, 90%, 65%)' : nodeColor} 
-            stopOpacity="0.8" 
-          />
+        <radialGradient id={`breath-glow-${node.id}`}>
+          <stop offset="0%" stopColor={nodeColor} stopOpacity="0.6" />
           <stop offset="100%" stopColor={nodeColor} stopOpacity="0" />
         </radialGradient>
-        <radialGradient id={`inner-highlight-${node.id}`} cx="30%" cy="30%">
-          <stop offset="0%" stopColor="white" stopOpacity="0.6" />
+        <radialGradient id={`inner-glow-${node.id}`} cx="35%" cy="35%">
+          <stop offset="0%" stopColor="white" stopOpacity="0.5" />
           <stop offset="100%" stopColor="white" stopOpacity="0" />
         </radialGradient>
       </defs>
