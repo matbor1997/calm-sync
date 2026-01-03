@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useGameLoop } from './useGameLoop';
-import { GameNodeComponent } from './GameNode';
+import { BubbleComponent } from './Bubble';
 import { ConnectionLines } from './ConnectionLines';
-import { ArrivalScreen } from './ArrivalScreen';
-import { ReflectionScreen } from './ReflectionScreen';
+import { TriangleEffects } from './TriangleEffects';
+import { CONFIG } from './types';
 
 export const GameCanvas: React.FC = () => {
-  const { gameState, handleNodeTap, startExperience, returnToArrival } = useGameLoop();
+  const { gameState, handleBubbleTap, resetGame } = useGameLoop();
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
   // Handle resize
@@ -28,55 +28,40 @@ export const GameCanvas: React.FC = () => {
     e.preventDefault();
   }, []);
   
-  // Background breathing effect
-  const breathValue = Math.sin(gameState.globalBreathPhase * Math.PI * 2);
-  const bgBrightness = 8 + breathValue * 2;
+  // Calculate center offset to position grid in middle of screen
+  const offsetX = dimensions.width / 2;
+  const offsetY = dimensions.height / 2;
   
-  // Transition overlay opacity
-  const transitionOpacity = gameState.isTransitioning ? gameState.transitionProgress : 0;
+  // Background color based on overall system state
+  const avgState = gameState.bubbles.reduce((sum, b) => sum + b.state, 0) / gameState.bubbles.length;
+  const systemCalmness = 1 - (avgState - 1) / 7;
+  
+  // Completion state affects visuals
+  const completionProgress = gameState.isComplete 
+    ? Math.min(1, gameState.completionTime / 2) 
+    : 0;
   
   if (dimensions.width === 0) {
     return <div className="h-full w-full bg-background" />;
   }
   
-  // Render based on current view
-  if (gameState.currentView === 'arrival') {
-    return (
-      <ArrivalScreen 
-        globalBreathPhase={gameState.globalBreathPhase}
-        onEnter={startExperience}
-      />
-    );
-  }
-  
-  if (gameState.currentView === 'reflection') {
-    return (
-      <ReflectionScreen 
-        globalBreathPhase={gameState.globalBreathPhase}
-        onRest={returnToArrival}
-      />
-    );
-  }
-  
-  // Experience view
   return (
     <div 
       className="h-full w-full relative overflow-hidden"
       onTouchStart={handleTouchStart}
       style={{ touchAction: 'none' }}
     >
-      {/* Breathing background */}
+      {/* Background gradient - becomes calmer as system stabilizes */}
       <div 
         className="absolute inset-0"
         style={{
           background: `linear-gradient(
             180deg,
-            hsl(220, 55%, ${bgBrightness}%) 0%,
-            hsl(245, 42%, ${bgBrightness + 4}%) 50%,
-            hsl(270, 35%, ${bgBrightness + 2}%) 100%
+            hsl(220, ${35 - systemCalmness * 15}%, ${10 + systemCalmness * 4 + completionProgress * 3}%) 0%,
+            hsl(240, ${30 - systemCalmness * 10}%, ${8 + systemCalmness * 3 + completionProgress * 2}%) 50%,
+            hsl(260, ${25 - systemCalmness * 10}%, ${10 + systemCalmness * 4 + completionProgress * 3}%) 100%
           )`,
-          transform: `scale(${1 + breathValue * 0.015})`,
-          transition: 'transform 0.5s ease-out',
+          transition: 'background 1s ease-out',
         }}
       />
       
@@ -84,17 +69,17 @@ export const GameCanvas: React.FC = () => {
       <div 
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: `radial-gradient(ellipse at center, transparent 35%, hsla(220, 60%, 4%, ${0.35 + breathValue * 0.08}) 100%)`,
+          background: `radial-gradient(ellipse at center, transparent 30%, hsla(220, 50%, 5%, ${0.4 - systemCalmness * 0.15}) 100%)`,
         }}
       />
       
-      {/* Configuration transition overlay */}
-      {gameState.isTransitioning && (
+      {/* Completion glow */}
+      {gameState.isComplete && (
         <div 
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: 'radial-gradient(ellipse at center, hsla(200, 30%, 80%, 0.2) 0%, transparent 60%)',
-            opacity: Math.sin(transitionOpacity * Math.PI),
+            background: 'radial-gradient(ellipse at center, hsla(180, 40%, 60%, 0.15) 0%, transparent 60%)',
+            opacity: completionProgress,
           }}
         />
       )}
@@ -106,24 +91,55 @@ export const GameCanvas: React.FC = () => {
         className="absolute inset-0"
         style={{ touchAction: 'none' }}
       >
-        {/* Connection lines between nodes */}
+        {/* Connection lines */}
         <ConnectionLines 
-          nodes={gameState.nodes}
-          screenWidth={dimensions.width}
-          screenHeight={dimensions.height}
+          bubbles={gameState.bubbles}
+          offsetX={offsetX}
+          offsetY={offsetY}
         />
         
-        {/* Render nodes */}
-        {gameState.nodes.map(node => (
-          <GameNodeComponent
-            key={node.id}
-            node={node}
-            screenWidth={dimensions.width}
-            screenHeight={dimensions.height}
-            onTap={handleNodeTap}
+        {/* Triangle activation effects */}
+        <TriangleEffects
+          triangles={gameState.triangles}
+          bubbles={gameState.bubbles}
+          offsetX={offsetX}
+          offsetY={offsetY}
+        />
+        
+        {/* Bubbles */}
+        {gameState.bubbles.map(bubble => (
+          <BubbleComponent
+            key={bubble.id}
+            bubble={bubble}
+            offsetX={offsetX}
+            offsetY={offsetY}
+            onTap={handleBubbleTap}
           />
         ))}
       </svg>
+      
+      {/* Minimal reset affordance after completion */}
+      {gameState.isComplete && completionProgress > 0.8 && (
+        <div 
+          className="absolute bottom-12 left-0 right-0 flex justify-center pointer-events-auto"
+          style={{
+            opacity: (completionProgress - 0.8) * 5,
+          }}
+        >
+          <button
+            onClick={resetGame}
+            className="text-sm tracking-widest uppercase opacity-40 hover:opacity-70 transition-opacity duration-500"
+            style={{
+              color: 'hsl(180, 30%, 70%)',
+              fontFamily: 'system-ui, sans-serif',
+              fontWeight: 300,
+              letterSpacing: '0.2em',
+            }}
+          >
+            again
+          </button>
+        </div>
+      )}
     </div>
   );
 };
