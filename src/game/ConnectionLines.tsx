@@ -1,78 +1,55 @@
 import React from 'react';
-import { BreathingNode } from './types';
+import { Bubble, CONFIG } from './types';
 
 interface ConnectionLinesProps {
-  nodes: BreathingNode[];
-  screenWidth: number;
-  screenHeight: number;
+  bubbles: Bubble[];
+  offsetX: number;
+  offsetY: number;
 }
 
 export const ConnectionLines: React.FC<ConnectionLinesProps> = ({
-  nodes,
-  screenWidth,
-  screenHeight,
+  bubbles,
+  offsetX,
+  offsetY,
 }) => {
-  // Create unique connection pairs
-  const connections: { from: BreathingNode; to: BreathingNode }[] = [];
-  const seen = new Set<string>();
+  const lines: React.ReactNode[] = [];
+  const drawnPairs = new Set<string>();
   
-  nodes.forEach(node => {
-    node.connections.forEach(connId => {
-      const key = [Math.min(node.id, connId), Math.max(node.id, connId)].join('-');
-      if (!seen.has(key)) {
-        seen.add(key);
-        const connNode = nodes.find(n => n.id === connId);
-        if (connNode) {
-          connections.push({ from: node, to: connNode });
-        }
-      }
+  bubbles.forEach(bubble => {
+    bubble.neighbors.forEach(neighborId => {
+      const key = [bubble.id, neighborId].sort((a, b) => a - b).join('-');
+      if (drawnPairs.has(key)) return;
+      drawnPairs.add(key);
+      
+      const neighbor = bubbles.find(b => b.id === neighborId);
+      if (!neighbor) return;
+      
+      const x1 = bubble.x + offsetX;
+      const y1 = bubble.y + offsetY;
+      const x2 = neighbor.x + offsetX;
+      const y2 = neighbor.y + offsetY;
+      
+      const avgState = (bubble.state + neighbor.state) / 2;
+      const calmness = 1 - (avgState - 1) / 7;
+      const opacity = 0.08 + calmness * 0.12;
+      
+      const avgPulse = (bubble.pulsePhase + neighbor.pulsePhase) / 2;
+      const pulseValue = Math.sin(avgPulse * Math.PI * 2) * 0.5 + 0.5;
+      
+      lines.push(
+        <line
+          key={key}
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke={`hsla(200, 30%, 60%, ${opacity + pulseValue * 0.05})`}
+          strokeWidth={1 + calmness * 0.5}
+          strokeLinecap="round"
+        />
+      );
     });
   });
   
-  return (
-    <g>
-      {connections.map(({ from, to }) => {
-        const x1 = from.x * screenWidth;
-        const y1 = from.y * screenHeight;
-        const x2 = to.x * screenWidth;
-        const y2 = to.y * screenHeight;
-        
-        // Interpolate breath phase for line pulse
-        const avgPhase = (from.phase + to.phase) / 2;
-        const pulseValue = Math.sin(avgPhase * Math.PI * 2);
-        
-        // Opacity based on tuning states
-        const bothSettled = from.tuningState === 'settled' && to.tuningState === 'settled';
-        const eitherSettled = from.tuningState === 'settled' || to.tuningState === 'settled';
-        
-        let baseOpacity = 0.08;
-        if (bothSettled) baseOpacity = 0.25;
-        else if (eitherSettled) baseOpacity = 0.15;
-        
-        const opacity = baseOpacity + pulseValue * 0.05;
-        
-        // Color
-        const hue = bothSettled ? 200 : 190;
-        const sat = bothSettled ? 30 : 25;
-        const light = bothSettled ? 65 : 50;
-        
-        return (
-          <line
-            key={`${from.id}-${to.id}`}
-            x1={x1}
-            y1={y1}
-            x2={x2}
-            y2={y2}
-            stroke={`hsl(${hue}, ${sat}%, ${light}%)`}
-            strokeWidth={bothSettled ? 1.5 : 1}
-            opacity={opacity}
-            strokeLinecap="round"
-            style={{
-              transition: 'stroke 0.5s ease-out, stroke-width 0.5s ease-out',
-            }}
-          />
-        );
-      })}
-    </g>
-  );
+  return <g>{lines}</g>;
 };
